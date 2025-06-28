@@ -1,0 +1,730 @@
+<!--
+    扫雷三角形版本~
+    作者：【小万泥、xphost】
+    Github：[点我进入](https://github.com/FireDragon0659/Minesweeper-Triangle)
+    操练场：[点我进入](https://FireDragon0659.github.io/Minesweeper-Triangle)
+    如果有任何疑问欢迎来向我提issue~
+    本项目最终目的为【武汉工程职业技术学院】的毕业之作~
+-->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>扫雷，但是是三角形版本</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        #all {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        #chess {
+            position: relative;
+            padding: 0;
+            overflow: auto;
+            width: 740px;
+            height: 740px;
+            background-color: #f0f0f0;
+        }
+
+        #title {
+            display: flex;
+            align-items: center;
+            width: 300px;
+            justify-content: space-around;
+        }
+
+        .triangle,
+        .triangle-click{
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-bottom: 1px solid black;
+            background-color: #e0e0e0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .triangle-click {
+            background-color: #b0b0b0;
+        }
+        .triangle:hover {
+            background-color: #d0d0d0;
+        }
+
+        .triangle:active {
+            background-color: #c0c0c0;
+        }
+
+        .triangle-up::before {
+            position: absolute;
+            content: '';
+            width: 1px;
+            height: 32px;
+            top: -4px;
+            left: 2px;
+            background-color: black;
+            transform-origin: 0 24px;
+            transform: rotate(26.53deg);
+        }
+
+        .triangle-up::after {
+            position: absolute;
+            content: '';
+            width: 1px;
+            height: 32px;
+            top: -13px;
+            left: 19px;
+            background-color: black;
+            transform-origin: 24px 24px;
+            transform: rotate(-26.53deg);
+        }
+
+        .triangle-up {
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+            padding-top: 7px;
+        }
+
+        .triangle-down {
+            clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+            padding-bottom: 7px;
+        }
+        table tr td {
+            width: 200px;
+            height: 30px;
+            max-height: 30px;
+        }
+    </style>
+</head>
+<body>
+<div id="all">
+    <div id="title">
+        <table>
+            <tr>
+                <td><label for="side">请输入边长</label></td>
+                <td><input id="side" placeholder="1到30" style="width: 200px" type="number" max="30" min="1"></td>
+            </tr>
+            <tr>
+                <td><label for="mine">请输入雷数</label></td>
+                <td><input id="mine" placeholder="1到边长的平方-1" style="width: 200px" type="number" max="899" min="1"></td>
+            </tr>
+            <tr>
+                <td><input id="cheat" type="checkbox"><label for="cheat">扣分模式</label></td>
+                <td>
+                    <button onclick="start()" style="width: 100%">开始游戏</button>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: right">分数：<span id="score">0</span></td>
+                <td style="text-align: right">时间：<span id="time">0</span></td>
+            </tr>
+            <tr>
+                <td style="text-align: right">剩旗：<span id="flag">0</span></td>
+                <td style="text-align: right">输赢：<span id="win"></span></td>
+            </tr>
+        </table>
+    </div>
+    <div id="chess">
+    </div>
+</div>
+<script>
+    /**
+     * 扫雷三角形版本：
+     * 以正三角形为模板。在周围12格以内生成格子。
+     * 三角形内数字最高可以有12。在角落里的三角形最高是3，在边上的三角形最高是7。
+     * 计算格子总数的公式与正方形的一致，都是边长的平方。
+     *
+     * 该程序仿刻于：[xphost的扫雷小游戏~](https://github.com/xphost008/NovaImitation/blob/dev/frontend/src/views/about/games/Minesweeper.vue)
+     */
+    window.addEventListener("contextmenu", function (e) {
+        // 首先取消一次右键事件
+        e.preventDefault()
+    })
+    // 格子数组
+    let chessArray = []
+    // 编辑数组
+    let blockArray = []
+
+    // 每一个格子所属的一个类。
+    // 为所有格子均设置一个getter、setter函数，用来更新DOM。
+    class ChessBlock {
+        constructor(x, y, p, m, s, c, w) {
+            // x：格子所述的x坐标。
+            // y：格子所述的y坐标
+            // p：格子所代表的数字【-1：雷、0：空、1-8：分别的数字】。
+            // m：格子的被点击状态【-1：已被点击、0：未标记、1：旗子、2：问号、3：被点到的雷（背景变红）。】
+            // s：格子应该显示什么【炸弹、问号、旗子、1-8的数字】（字符串形式）
+            // w：是正三角还是倒三角（是正三角则为true，否则为false。）
+            this._x = x;
+            this._y = y;
+            this._p = p;
+            this._m = m;
+            this._s = s;
+            this._w = w;
+        }
+
+        get x() {
+            return this._x;
+        }
+
+        get y() {
+            return this._y;
+        }
+
+        get p() {
+            return this._p;
+        }
+
+        set p(value) {
+            chessArray[this._x][this._y].style.color =
+                value === 1 ? "rgb(0, 128, 255)" :
+                    value === 2 ? "rgb(0, 128, 0)" :
+                        value === 3 ? "rgb(192, 0, 0)" :
+                            value === 4 ? "rgb(0, 0, 96)" :
+                                value === 5 ? "rgb(128, 0, 48)" :
+                                    value === 6 ? "rgb(0, 96, 96)" :
+                                        value === 7 ? "rgb(10, 10, 10)" :
+                                            value === 8 ? "rgb(100, 100, 100)" :
+                                                value === 9 ? "rgb(255, 128, 0)" :
+                                                    value === 10 ? "rgb(128, 0, 128)" :
+                                                        value === 11 ? "rgb(180, 150, 0)" :
+                                                            value === 12 ? "rgb(139, 69, 19)" : "black"
+            this._p = value;
+        }
+
+        get m() {
+            return this._m;
+        }
+
+        set m(value) {
+            chessArray[this._x][this._y].style.cursor = value === -1 || value === 3 ? "default" : "pointer"
+            if(value === -1) {
+                chessArray[this._x][this._y].style.backgroundColor = "#b0b0b0"
+            }else if(value === 3) {
+                chessArray[this._x][this._y].style.backgroundColor = "red"
+            }
+            this._m = value;
+        }
+
+        get s() {
+            return this._s;
+        }
+
+        set s(value) {
+            chessArray[this._x][this._y].innerText = value
+            this._s = value;
+        }
+
+        get w() {
+            return this._w;
+        }
+
+        set w(value) {
+            this._w = value;
+        }
+    }
+    //以下是不相关的DOM元素
+    const timeDOM = document.getElementById("time")
+    const scoreDOM = document.getElementById("score")
+    const flagDOM = document.getElementById("flag")
+    const winDOM = document.getElementById("win")
+    // 边长、雷数~
+    const side = document.getElementById("side")
+    const mine = document.getElementById("mine")
+    // 棋盘
+    const chess = document.getElementById("chess")
+    // 以下为每个DOM元素设置了一个Getter、Setter方法，用来简化操控各个元素~
+    // 剩余旗子数
+    let flag = {
+        _value: 0,
+        get value() {
+            return this._value
+        },
+        set value(val) {
+            flagDOM.innerText = val.toString()
+            this._value = val
+        }
+    }
+    // 分数（每揭开一个格子+10分）
+    let score = {
+        _value: 0,
+        get value() {
+            return this._value
+        },
+        set value(val) {
+            scoreDOM.innerText = val.toString()
+            this._value = val
+        }
+    }
+    // 使用时间
+    let time = {
+        _value: 0,
+        get value() {
+            return this._value
+        },
+        set value(val) {
+            timeDOM.innerText = val.toString()
+            this._value = val
+        }
+    }
+    // 是否输赢（-1：你输了，0：还没判断，1：你赢了）
+    let win = {
+        _value: 0,
+        get value() {
+            return this._value
+        },
+        set value(val) {
+            winDOM.style.color = val === -1 ? "red" : val === 1 ? "green" : "black"
+            winDOM.innerText = val === -1 ? "你输了" : val === 1 ? "你赢了" : ""
+            this._value = val
+        }
+    }
+    // 是否开启作弊
+    let cheat = false
+    // 是否开始游戏
+    let isStart = false
+    // 临时时间
+    let t = 0
+    // 锁定全局
+    let lock = false
+    // 棋盘实际边长
+    let si = 0
+    // 棋盘实际雷数
+    let mi = 0
+    // 棋盘记录雷数
+    let count = 0
+    // 记录一下所用时间~
+    setInterval(function () {
+        if (!isStart || lock) return
+        if (t > 10) {
+            t = 0
+            time.value++
+        }
+        t++
+    }, 100)
+    // 点击某个格子产生的事件
+    function chessClick(block) {
+        // 以下代码与xphost的Vue代码一致~
+        if(lock || block === undefined) return
+        if(!isStart) isStart = true
+        if(![-1, 1, 3].includes(block.m)) {
+            block.m = -1
+            block.s = block.p === -1 ? "💣" : block.p === 0 ? "" : block.p.toString()
+            if(block.p === -1) {
+                if(cheat) {
+                    score.value -= 50
+                    block.m = 3
+                    flag--
+                }else{
+                    lock = true
+                    win.value = -1
+                    block.m = 3
+                    for(let k = 0; k < si; k++) {
+                        for(let l = 0; l <= k * 2; l++) {
+                            if(blockArray[k][l].p === -1) {
+                                blockArray[k][l].s = "💣"
+                            }
+                        }
+                    }
+                    return
+                }
+            }else{
+                count++
+                score.value += 10
+            }
+            if(count === si * si - mi) {
+                lock = true
+                win.value = 1
+                return
+            }
+            if(block.p !== 0) return
+            // 以下开始递归运算啦，运算方法参考了initNum函数~
+            if(block.y >= 1) {
+                chessClick(blockArray[block.x][block.y - 1])
+            }
+            if(block.y >= 2) {
+                chessClick(blockArray[block.x][block.y - 2])
+            }
+            if(block.y <= 2 * block.x - 1) {
+                chessClick(blockArray[block.x][block.y + 1])
+            }
+            if(block.y <= 2 * block.x - 2) {
+                chessClick(blockArray[block.x][block.y + 2])
+            }
+            if(block.x >= 1) {
+                chessClick(blockArray[block.x - 1][block.y])
+                if(block.y >= 1) {
+                    chessClick(blockArray[block.x - 1][block.y - 1])
+                }
+                if(block.y >= 2) {
+                    chessClick(blockArray[block.x - 1][block.y - 2])
+                }
+            }
+            if(block.x < si - 1) {
+                chessClick(blockArray[block.x + 1][block.y])
+                if(block.y <= 2 * (block.x + 1) - 1) {
+                    chessClick(blockArray[block.x + 1][block.y + 1])
+                }
+                if(block.y <= 2 * (block.x + 1) - 2) {
+                    chessClick(blockArray[block.x + 1][block.y + 2])
+                }
+            }
+            if(block.w) {
+                if(block.x < si - 1) {
+                    if(block.y >= 1) {
+                        chessClick(blockArray[block.x + 1][block.y - 1])
+                    }
+                    if(block.y <= 2 * (block.x + 1) - 3) {
+                        chessClick(blockArray[block.x + 1][block.y + 3])
+                    }
+                }
+            }else{
+                if(block.x >= 1) {
+                    if(block.y >= 3) {
+                        chessClick(blockArray[block.x - 1][block.y - 3])
+                    }
+                    if(block.y <= 2 * (block.x - 1)) {
+                        chessClick(blockArray[block.x - 1][block.y + 1])
+                    }
+                }
+            }
+        }
+    }
+    // 右键某个格子产生的事件
+    function chessRight(block) {
+        if(lock) return
+        switch(block.m) {
+            case -1:
+                let k = 0
+                if(block.y >= 1) {
+                    if([1, 3].includes(blockArray[block.x][block.y - 1].m)) {
+                        k++
+                    }
+                }
+                if(block.y >= 2) {
+                    if([1, 3].includes(blockArray[block.x][block.y - 2].m)) {
+                        k++
+                    }
+                }
+                if(block.y <= 2 * block.x - 1) {
+                    if([1, 3].includes(blockArray[block.x][block.y + 1].m)) {
+                        k++
+                    }
+                }
+                if(block.y <= 2 * block.x - 2) {
+                    if([1, 3].includes(blockArray[block.x][block.y + 2].m)) {
+                        k++
+                    }
+                }
+                if(block.x >= 1) {
+                    if([1, 3].includes(blockArray[block.x - 1][block.y].m)) {
+                        k++
+                    }
+                    if(block.y >= 1) {
+                        if([1, 3].includes(blockArray[block.x - 1][block.y - 1].m)) {
+                            k++
+                        }
+                    }
+                    if(block.y >= 2) {
+                        if([1, 3].includes(blockArray[block.x - 1][block.y - 2].m)) {
+                            k++
+                        }
+                    }
+                }
+                if(block.x < si - 1) {
+                    if([1, 3].includes(blockArray[block.x + 1][block.y].m)) {
+                        k++
+                    }
+                    if(block.y <= 2 * (block.x + 1) - 1) {
+                        if([1, 3].includes(blockArray[block.x + 1][block.y + 1].m)) {
+                            k++
+                        }
+                    }
+                    if(block.y <= 2 * (block.x + 1) - 2) {
+                        if([1, 3].includes(blockArray[block.x + 1][block.y + 2].m)) {
+                            k++
+                        }
+                    }
+                }
+                if(block.w) {
+                    if(block.x < si - 1) {
+                        if(block.y >= 1) {
+                            if([1, 3].includes(blockArray[block.x + 1][block.y - 1].m)) {
+                                k++
+                            }
+                        }
+                        if(block.y <= 2 * (block.x + 1) - 3) {
+                            if([1, 3].includes(blockArray[block.x + 1][block.y + 3].m)) {
+                                k++
+                            }
+                        }
+                    }
+                }else{
+                    if(block.x >= 1) {
+                        if(block.y >= 3) {
+                            if([1, 3].includes(blockArray[block.x - 1][block.y - 3].m)) {
+                                k++
+                            }
+                        }
+                        if(block.y <= 2 * (block.x - 1)) {
+                            if([1, 3].includes(blockArray[block.x - 1][block.y + 1].m)) {
+                                k++
+                            }
+                        }
+                    }
+                }
+                if(block.p > k) return
+                if(block.y >= 1) {
+                    chessClick(blockArray[block.x][block.y - 1])
+                }
+                if(block.y >= 2) {
+                    chessClick(blockArray[block.x][block.y - 2])
+                }
+                if(block.y <= 2 * block.x - 1) {
+                    chessClick(blockArray[block.x][block.y + 1])
+                }
+                if(block.y <= 2 * block.x - 2) {
+                    chessClick(blockArray[block.x][block.y + 2])
+                }
+                if(block.x >= 1) {
+                    chessClick(blockArray[block.x - 1][block.y])
+                    if(block.y >= 1) {
+                        chessClick(blockArray[block.x - 1][block.y - 1])
+                    }
+                    if(block.y >= 2) {
+                        chessClick(blockArray[block.x - 1][block.y - 2])
+                    }
+                }
+                if(block.x < si - 1) {
+                    chessClick(blockArray[block.x + 1][block.y])
+                    if(block.y <= 2 * (block.x + 1) - 1) {
+                        chessClick(blockArray[block.x + 1][block.y + 1])
+                    }
+                    if(block.y <= 2 * (block.x + 1) - 2) {
+                        chessClick(blockArray[block.x + 1][block.y + 2])
+                    }
+                }
+                if(block.w) {
+                    if(block.x < si - 1) {
+                        if(block.y >= 1) {
+                            chessClick(blockArray[block.x + 1][block.y - 1])
+                        }
+                        if(block.y <= 2 * (block.x + 1) - 3) {
+                            chessClick(blockArray[block.x + 1][block.y + 3])
+                        }
+                    }
+                }else{
+                    if(block.x >= 1) {
+                        if(block.y >= 3) {
+                            chessClick(blockArray[block.x - 1][block.y - 3])
+                        }
+                        if(block.y <= 2 * (block.x - 1)) {
+                            chessClick(blockArray[block.x - 1][block.y + 1])
+                        }
+                    }
+                }
+                break
+            case 0:
+                if(flag.value > 0) {
+                    block.m = 1
+                    block.s = '🚩'
+                    flag.value--
+                }else{
+                    block.m = 2
+                    block.s = '❓'
+                }
+                break
+            case 1:
+                block.m = 2
+                block.s = '❓'
+                flag.value++
+                break
+            case 2:
+                block.m = 0
+                block.s = ""
+                break
+            default:
+                break
+        }
+    }
+    // 用来做一个格子的数组，用于生成雷时以便于快速判断用（
+    let chessIndexArray = []
+    function initArray() {
+        blockArray.splice(0, blockArray.length)
+        chessArray.splice(0, chessArray.length)
+        chessIndexArray.splice(0, chessIndexArray.length)
+        chess.innerHTML = ""
+        let top = 0;
+        for (let i = 0; i < si; i++) {
+            chessArray.push([])
+            blockArray.push([])
+            let left = 0
+            for (let j = 0; j < si - i; j++) {
+                left += 12
+            }
+            let b = true
+            for (let j = 0; j <= 2 * i; j++) {
+                chessArray[i].push(0)
+                blockArray[i].push(0)
+                let block = new ChessBlock(i, j, 0, 0, "", false, b)
+                let chessDiv = document.createElement("div")
+                chessDiv.classList.add("triangle")
+                chessDiv.style.left = left + "px"
+                chessDiv.style.top = top + "px"
+                chessDiv.classList.add(b ? "triangle-up" : "triangle-down")
+                chessDiv.addEventListener("click", function () {
+                    chessClick(block)
+                })
+                chessDiv.addEventListener("contextmenu", function() {
+                    chessRight(block)
+                })
+                chessArray[i][j] = chessDiv
+                blockArray[i][j] = block
+                const arr = [i, j]
+                chess.appendChild(chessDiv)
+                chessIndexArray.push(arr)
+                b = !b
+                left += 12
+            }
+            top += 24
+        }
+    }
+    // 生成雷的函数（采用循环随机数、并且使用逐个移除数组内容实现）
+    function genMine() {
+        let count = mi;
+        while(count > 0) {
+            let rand = Math.floor(Math.random() * chessIndexArray.length)
+            let s1 = chessIndexArray[rand][0]
+            let s2 = chessIndexArray[rand][1]
+            blockArray[s1][s2].p = -1
+            chessIndexArray.splice(rand, 1)
+            count--
+        }
+    }
+    // 为所有的p设置数字~
+    // 递归方式可能有所不同，毕竟最高数字为12~
+    function initNum() {
+        for(let i = 0; i < si; i++) {
+            for(let j = 0; j <= 2 * i; j++) {
+                if(blockArray[i][j].p === -1) continue
+                let foo = 0
+                // 前面两段一样，到这就不一样了~
+                // 首先判断左右两格是否有雷。
+                if(j >= 1) {
+                    if(blockArray[i][j - 1].p === -1) {
+                        foo++
+                    }
+                }
+                if(j >= 2) {
+                    if(blockArray[i][j - 2].p === -1) {
+                        foo++
+                    }
+                }
+                if(j <= 2 * i - 1) {
+                    if(blockArray[i][j + 1].p === -1) {
+                        foo++
+                    }
+                }
+                if(j <= 2 * i - 2) {
+                    if(blockArray[i][j + 2].p === -1) {
+                        foo++
+                    }
+                }
+                // 再接着判断上下分别3格是否有雷
+                if(i >= 1) {
+                    if(blockArray[i - 1][j]?.p === -1) {
+                        foo++
+                    }
+                    if(j >= 1) {
+                        if(blockArray[i - 1][j - 1]?.p === -1) {
+                            foo++
+                        }
+                    }
+                    if(j >= 2) {
+                        if(blockArray[i - 1][j - 2].p === -1) {
+                            foo++
+                        }
+                    }
+                }
+                if(i < si - 1) {
+                    if(blockArray[i + 1][j].p === -1) {
+                        foo++
+                    }
+                    if(j <= 2 * (i + 1) - 1) {
+                        if(blockArray[i + 1][j + 1].p === -1) {
+                            foo++
+                        }
+                    }
+                    if(j <= 2 * (i + 1) - 2) {
+                        if(blockArray[i + 1][j + 2].p === -1) {
+                            foo++
+                        }
+                    }
+                }
+                // 最后判断是正是倒的三角形，如果是正三角形，则判断左下和右下两个角落是否有雷，否则判断左上和右上。
+                if(blockArray[i][j].w) {
+                    if(i < si - 1) {
+                        if(j >= 1) {
+                            if(blockArray[i + 1][j - 1].p === -1) {
+                                foo++
+                            }
+                        }
+                        if(j <= 2 * (i + 1) - 3) {
+                            if(blockArray[i + 1][j + 3]?.p === -1) {
+                                foo++
+                            }
+                        }
+                    }
+                }else{
+                    if(i >= 1) {
+                        if(j >= 3) {
+                            if(blockArray[i - 1][j - 3].p === -1) {
+                                foo++
+                            }
+                        }
+                        if(j <= 2 * (i - 1)) {
+                            if(blockArray[i - 1][j + 1]?.p === -1) {
+                                foo++
+                            }
+                        }
+                    }
+                }
+                blockArray[i][j].p = foo
+            }
+        }
+    }
+    function start() {
+        let s = parseInt(side.value)
+        let m = parseInt(mine.value)
+        if (Number.isNaN(s) || Number.isNaN(m) || s < 1 || s > 30 || m < 1 || m > s * s - 1) {
+            return
+        }
+        si = s
+        mi = m
+        initArray()
+        genMine()
+        initNum()
+        isStart = false
+        time.value = 0
+        score.value = 0
+        flag.value = mi
+        win.value = 0
+        lock = false
+        count = 0
+    }
+
+    document.getElementById("cheat").addEventListener("change", function () {
+        cheat = this.checked;
+    })
+</script>
+</body>
+</html>
